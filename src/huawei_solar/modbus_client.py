@@ -20,6 +20,7 @@ from tmodbus.pdu.base import BaseClientPDU
 from tmodbus.utils.crc import calculate_crc16
 
 from .exceptions import ConnectionInterruptedException, DecodeError, ReadException
+from .files import OptimizerRealTimeDataFile
 from .modbus_pdu import (
     CompleteUploadPDU,
     LoginPDU,
@@ -238,6 +239,62 @@ class AsyncHuaweiSolarClient(RegisterAwareModbusClient, AsyncModbusClient):
                     f"Computed CRC {calculated_crc:04x} for file {file_type} "
                     f"does not match expected value {swapped_crc:04x}"
                 )
+
+                # Huawei optimizer history file 0x44 can contain complete and
+                # structurally valid data even when the returned CRC is incorrect.
+                # Only accept such data after strict structural validation.
+                if file_type == 0x44:
+                    try:
+                        optimizer_file = OptimizerRealTimeDataFile(file_data)
+                        expected_addresses = set(range(4, 27))
+                        latest = optimizer_file.data_units[0] if optimizer_file.data_units else None
+
+                        addresses = (
+                            [optimizer.optimizer_address for optimizer in latest.optimizers]
+                            if latest is not None
+                            else []
+                        )
+
+                        timestamps_ok = all(
+                            optimizer_file.data_units[i].time
+                            > optimizer_file.data_units[i + 1].time
+                            for i in range(len(optimizer_file.data_units) - 1)
+                        )
+
+                        structurally_valid = (
+                            latest is not None
+                            and len(latest.optimizers) == 23
+                            and len(set(addresses)) == 23
+                            and set(addresses) == expected_addresses
+                            and timestamps_ok
+                        )
+
+                        if structurally_valid:
+                            _LOGGER.warning(
+                                "File 68 CRC mismatch accepted after structural validation: "
+                                "bytes=%d calculated=%04x expected=%04x units=%d",
+                                len(file_data),
+                                calculated_crc,
+                                swapped_crc,
+                                len(optimizer_file.data_units),
+                            )
+                            return file_data
+
+                        _LOGGER.warning(
+                            "File 68 CRC mismatch rejected by structural validation: "
+                            "bytes=%d calculated=%04x expected=%04x units=%d addresses=%s",
+                            len(file_data),
+                            calculated_crc,
+                            swapped_crc,
+                            len(optimizer_file.data_units),
+                            addresses,
+                        )
+                    except Exception as validation_error:
+                        _LOGGER.warning(
+                            "File 68 CRC mismatch rejected: structural decoder failed: %r",
+                            validation_error,
+                        )
+
                 raise DecodeError(msg)
 
             return file_data
