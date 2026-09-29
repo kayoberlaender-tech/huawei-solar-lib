@@ -3,11 +3,12 @@
 import logging
 import struct
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 
 from huawei_solar.exceptions import DecodeError
 from huawei_solar.register_definitions.string import bytes_to_string
 from huawei_solar.register_values import _IntEnumWithPrettyString
+from huawei_solar.utils import get_local_timezone
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -152,7 +153,7 @@ class OptimizerRealTimeDataFile:
 
                 self.data_units.append(
                     OptimizerHistoryRealTimeDataUnit(
-                        datetime.fromtimestamp(time, tz=UTC),
+                        datetime.fromtimestamp(time, tz=get_local_timezone()),
                         optimizers,
                     ),
                 )

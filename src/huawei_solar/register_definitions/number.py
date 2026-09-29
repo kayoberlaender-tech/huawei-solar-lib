@@ -1,6 +1,6 @@
 """Number registers."""
 
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import IntEnum
 from inspect import isclass
 from typing import Any
@@ -215,6 +215,8 @@ class TimestampRegister(NumberRegister[datetime | None]):
 
         timestamp_value = None
         if value != self.invalid_value:
-            timestamp_value = datetime.fromtimestamp(value, tz=UTC)
+            # I was unable to come up with a good way of determining in which time
+            # zone this value is. So we return it without one.
+            timestamp_value = datetime.fromtimestamp(value)  # noqa: DTZ006
 
         return Result(timestamp_value, None)
